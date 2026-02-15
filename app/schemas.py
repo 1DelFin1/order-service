@@ -7,7 +7,6 @@ from pydantic import BaseModel
 class OrderBaseSchema(BaseModel):
     product_id: int
     quantity: int
-    price: float
 
 
 class OrderCreateSchema(BaseModel):
