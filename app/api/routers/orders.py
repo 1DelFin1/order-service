@@ -16,6 +16,11 @@ async def create_order(session: SessionDep, order_data: OrderCreateSchema):
     return product
 
 
+@orders_router.get("/users/{user_id}")
+async def get_orders_by_user_id(session: SessionDep, user_id: UUID):
+    return await OrderService.get_orders_by_user_id(session, user_id)
+
+
 @orders_router.get("/{order_id}")
 async def get_order_by_id(session: SessionDep, order_id: UUID):
     product = await OrderService.get_order_by_id(session, order_id)

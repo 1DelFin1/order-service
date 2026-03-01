@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from uuid import UUID
 
 import httpx
@@ -194,6 +195,52 @@ class OrderService:
         if not order:
             raise PRODUCT_NOT_FOUND_EXCEPTION
         return order
+
+    @classmethod
+    async def get_orders_by_user_id(
+        cls,
+        session: AsyncSession,
+        user_id: UUID,
+    ) -> list[dict]:
+        orders_stmt = (
+            select(OrderModel.id, OrderModel.status)
+            .where(OrderModel.user_id == user_id)
+        )
+        order_rows = (await session.execute(orders_stmt)).all()
+
+        if not order_rows:
+            return []
+
+        order_ids = [row.id for row in order_rows]
+        items_stmt = (
+            select(
+                OrderItemModel.order_id,
+                OrderItemModel.product_id,
+                OrderItemModel.quantity,
+                OrderItemModel.price,
+            )
+            .where(OrderItemModel.order_id.in_(order_ids))
+        )
+        item_rows = (await session.execute(items_stmt)).all()
+
+        items_by_order_id: dict[UUID, list[dict]] = defaultdict(list)
+        for item in item_rows:
+            items_by_order_id[item.order_id].append(
+                {
+                    "product_id": item.product_id,
+                    "quantity": item.quantity,
+                    "price": item.price,
+                }
+            )
+
+        return [
+            {
+                "id": order.id,
+                "status": order.status.value,
+                "order_items": items_by_order_id.get(order.id, []),
+            }
+            for order in order_rows
+        ]
 
     # TODO: оптимизировать
     @classmethod
