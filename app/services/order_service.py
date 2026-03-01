@@ -133,16 +133,16 @@ class OrderService:
     @classmethod
     async def confirm_order(cls, session: AsyncSession, order_id: UUID):
         order_status = await cls.get_order_status_by_id(session, order_id)
-        if order_status != OrderStatus.RESERVED:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order is not reserver"
-            )
-
         if order_status == OrderStatus.PAID:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Order already reserved"
+            )
+
+        if order_status != OrderStatus.RESERVED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Order is not reserver"
             )
 
         stmt = (
@@ -159,12 +159,20 @@ class OrderService:
         await session.execute(stmt)
         await session.commit()
 
+        await cls.move_order_to_preparing(session, order_id)
+
         payload = {"order_id": order_id}
         await rabbit_broker.publish(payload, routing_key=settings.rabbitmq.PRODUCTS_DELETE_ROUTING_KEY)
 
     @classmethod
     async def move_order_to_preparing(cls, session: AsyncSession, order_id: UUID):
         order_status = await cls.get_order_status_by_id(session, order_id)
+        if order_status == OrderStatus.PREPARING:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Order already prepared"
+            )
+
         if order_status != OrderStatus.PAID:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -178,7 +186,6 @@ class OrderService:
         )
         await session.execute(stmt)
         await session.commit()
-        return {"ok": True}
 
     @classmethod
     async def get_order_by_id(cls, session: AsyncSession, order_id: UUID) -> OrderModel:
