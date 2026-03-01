@@ -90,7 +90,7 @@ class OrderService:
     @classmethod
     async def reserve_products(cls, order_id: UUID, items: list):
         payload = {
-            "correlation_id": str(order_id),
+            "order_id": str(order_id),
             "type": "reserve_products",
             "sender": "order-service",
             "items": items
@@ -114,7 +114,7 @@ class OrderService:
             if order_status != OrderStatus.PENDING or not order_status:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Order not pending"
+                    detail=f"Order is not pending"
                 )
 
             stmt = (
@@ -130,14 +130,13 @@ class OrderService:
             await session.execute(stmt)
             await session.commit()
 
-
     @classmethod
     async def confirm_order(cls, session: AsyncSession, order_id: UUID):
         order_status = await cls.get_order_status_by_id(session, order_id)
         if order_status != OrderStatus.RESERVED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order not reserver"
+                detail=f"Order is not reserver"
             )
 
         if order_status == OrderStatus.PAID:
@@ -160,7 +159,8 @@ class OrderService:
         await session.execute(stmt)
         await session.commit()
 
-        # TODO: сделать удаление из reserved_products
+        payload = {"order_id": order_id}
+        await rabbit_broker.publish(payload, routing_key=settings.rabbitmq.PRODUCTS_DELETE_ROUTING_KEY)
 
     @classmethod
     async def move_order_to_preparing(cls, session: AsyncSession, order_id: UUID):
