@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import orders_router
-from app.core.rabbit_config import rabbit_broker, orders_queue, orders_exchange
+from app.core.rabbit_config import rabbit_broker
 from app.core.config import settings
 
 
@@ -16,15 +16,6 @@ async def lifespan(app: FastAPI):
     logging.basicConfig(level=logging.INFO)
 
     await rabbit_broker.start()
-
-    exchange = await rabbit_broker.declare_exchange(
-        orders_exchange
-    )
-    queue = await rabbit_broker.declare_queue(
-        orders_queue
-    )
-
-    await queue.bind(exchange=exchange, routing_key="orders")
     yield
     await rabbit_broker.stop()
 
@@ -41,4 +32,4 @@ app.add_middleware(
 )
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8002, reload=True)

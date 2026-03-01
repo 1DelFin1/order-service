@@ -23,7 +23,7 @@ async def get_order_by_id(session: SessionDep, order_id: UUID):
 
 
 @orders_router.get("/users/{user_id}/purchased-products/{product_id}")
-async def check_products_purchased(
+async def check_purchased_products(
     session: SessionDep,
     user_id: UUID,
     product_id: int,
@@ -32,3 +32,12 @@ async def check_products_purchased(
         session, user_id, product_id
     )
     return {"has_purchased": has_purchased}
+
+
+@orders_router.post("/{order_id}/confirm")
+async def confirm_order(
+    session: SessionDep,
+    order_id: UUID,
+):
+    await OrderService.confirm_order(session, order_id)
+    return {"ok": True, "order_id": order_id}

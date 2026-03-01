@@ -4,11 +4,12 @@ from uuid import UUID
 import httpx
 from fastapi import status, HTTPException
 
-from sqlalchemy import select
+from sqlalchemy import select, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.rabbit_config import rabbit_broker
 from app.core.config import settings
+from app.core.database import async_session_factory
+from app.core.rabbit_config import rabbit_broker
 from app.exceptions import PRODUCT_NOT_FOUND_EXCEPTION
 from app.models.orders import OrderModel, OrderStatus, OrderItemModel
 from app.schemas import OrderCreateSchema
@@ -63,7 +64,7 @@ class OrderService:
                 if not result.get("ok"):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"All products are unavailable",
+                        detail=f"Products not in stock",
                     )
 
                 return result
@@ -92,12 +93,92 @@ class OrderService:
             "correlation_id": str(order_id),
             "type": "reserve_products",
             "sender": "order-service",
-            "payload": {
-                "order_id": str(order_id),
-                "items": items
-            },
+            "items": items
         }
-        await rabbit_broker.publish(payload, routing_key=settings.rabbitmq.PRODUCTS_ROUTING_KEY)
+        await rabbit_broker.publish(payload, routing_key=settings.rabbitmq.PRODUCTS_RESERVE_ROUTING_KEY)
+
+    @classmethod
+    async def get_order_status_by_id(cls, session: AsyncSession, order_id: UUID) -> OrderStatus | None:
+        stmt = select(OrderModel).where(OrderModel.id == order_id)
+        result = await session.scalar(stmt)
+        if not result:
+            return None
+        return result.status
+
+    @classmethod
+    async def move_order_to_reserved(cls, order_data: dict):
+        async with async_session_factory() as session:
+            order_id = order_data.get("order_id")
+
+            order_status = await cls.get_order_status_by_id(session, order_id)
+            if order_status != OrderStatus.PENDING or not order_status:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Order not pending"
+                )
+
+            stmt = (
+                update(OrderModel)
+                .where(
+                    and_(
+                        OrderModel.id == order_id,
+                        OrderModel.status == OrderStatus.PENDING,
+                    )
+                )
+                .values({"status": OrderStatus.RESERVED})
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+
+    @classmethod
+    async def confirm_order(cls, session: AsyncSession, order_id: UUID):
+        order_status = await cls.get_order_status_by_id(session, order_id)
+        if order_status != OrderStatus.RESERVED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Order not reserver"
+            )
+
+        if order_status == OrderStatus.PAID:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Order already reserved"
+            )
+
+        stmt = (
+            update(OrderModel)
+            .where(
+                and_(
+                    OrderModel.id == order_id,
+                    OrderModel.status == OrderStatus.RESERVED,
+                )
+            )
+            .values({"status": OrderStatus.PAID})
+        )
+
+        await session.execute(stmt)
+        await session.commit()
+
+        # TODO: сделать удаление из reserved_products
+
+    @classmethod
+    async def move_order_to_preparing(cls, session: AsyncSession, order_id: UUID):
+        order_status = await cls.get_order_status_by_id(session, order_id)
+        if order_status != OrderStatus.PAID:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Order not paid"
+            )
+
+        stmt = (
+            update(OrderModel)
+            .where(OrderModel.id == order_id)
+            .values({"status": OrderStatus.PREPARING})
+        )
+        await session.execute(stmt)
+        await session.commit()
+        return {"ok": True}
 
     @classmethod
     async def get_order_by_id(cls, session: AsyncSession, order_id: UUID) -> OrderModel:
@@ -107,15 +188,24 @@ class OrderService:
             raise PRODUCT_NOT_FOUND_EXCEPTION
         return order
 
+    # TODO: оптимизировать
     @classmethod
     async def has_user_purchased_product(
-            cls,
-            session: AsyncSession,
-            user_id: UUID,
-            product_id: int,
+        cls,
+        session: AsyncSession,
+        user_id: UUID,
+        product_id: int,
     ) -> bool:
-        stmt = select(OrderModel).where(
-            OrderModel.user_id == user_id, OrderModel.product_id == product_id
+        stmt = (
+            select(OrderModel.id)
+            .where(OrderModel.user_id == user_id)
         )
-        result = await session.execute(stmt)
-        return result.scalar() is not None
+        order_ids = list((await session.scalars(stmt)).all())
+
+        stmt = (
+            select(OrderItemModel.product_id)
+            .where(OrderItemModel.order_id.in_(order_ids))
+        )
+        product_ids = list((await session.scalars(stmt)).all())
+
+        return product_id in product_ids

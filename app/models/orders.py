@@ -1,28 +1,24 @@
-from decimal import Decimal
 from enum import Enum
-from uuid import UUID, uuid4
+from uuid import uuid4, UUID
 
-from sqlalchemy import Integer, Float, DECIMAL
+from sqlalchemy import Integer, Float
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 from app.models.mixins import TimestampMixin
 
 
-class OrderStatus(Enum):
+class OrderStatus(str, Enum):
     PENDING = "pending"
-    PROCESSING = "processing"
-    CONFIRMED = "confirmed"
+    RESERVED = "reserved"
+    RESERVATION_FAILED = "reservation_failed"
+    PAID = "paid"
     PAYMENT_FAILED = "payment_failed"
-    OUT_OF_STOCK = "out_of_stock"
     PREPARING = "preparing"
     SHIPPING = "shipping"
-    IN_TRANSIT = "in_transit"
-    OUT_FOR_DELIVERY = "out_for_delivery"
     DELIVERED = "delivered"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
-    FAILED = "failed"
     REFUNDED = "refunded"
 
 

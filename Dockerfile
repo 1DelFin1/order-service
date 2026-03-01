@@ -9,10 +9,13 @@ WORKDIR /app
 COPY pyproject.toml .
 
 RUN python -m pip install uv && \
-    uv pip install --system -e .
+    uv pip install --system -e . && \
+    pip install "faststream[cli]"
 
 COPY . .
 
 EXPOSE 8002
 
-CMD alembic upgrade head && uvicorn 'app.main:app' --host=0.0.0.0 --port=8002
+CMD alembic upgrade head && \
+    (faststream run app.fs.app:app &) && \
+    uvicorn 'app.main:app' --host=0.0.0.0 --port=8002 --reload

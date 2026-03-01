@@ -5,12 +5,12 @@ from app.core.config import settings
 rabbit_broker = RabbitBroker(settings.rabbitmq.RABBITMQ_URL)
 
 orders_exchange = RabbitExchange(
-    name="orders-exchange",
+    name=settings.rabbitmq.ORDERS_ROUTING_KEY,
     type=ExchangeType.DIRECT,
     durable=True,
 )
 
-orders_queue = RabbitQueue(
-    name="orders-queue",
+orders_reserved_queue = RabbitQueue(
+    name=settings.rabbitmq.ORDERS_RESERVED_ROUTING_KEY,
     durable=True,
 )
