@@ -137,7 +137,7 @@ class OrderService:
         if order_status == OrderStatus.PAID:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order already reserved"
+                detail=f"Order already paid"
             )
 
         if order_status != OrderStatus.RESERVED:
