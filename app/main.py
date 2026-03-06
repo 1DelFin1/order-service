@@ -6,7 +6,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import orders_router
+from app.api.routers import main_router
 from app.core.rabbit_config import rabbit_broker
 from app.core.config import settings
 
@@ -21,7 +21,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="order-service", lifespan=lifespan)
-app.include_router(orders_router)
+app.include_router(main_router)
+
 
 app.add_middleware(
     CORSMiddleware,

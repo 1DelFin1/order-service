@@ -61,6 +61,20 @@ class RabbitConfig(Conf):
     RABBITMQ_URL: str
 
 
+class RedisConfig(Conf):
+    REDIS_HOST: str
+    REDIS_PORT: int
+    REDIS_PASSWORD: str
+
+    @property
+    def REDIS_URL_ASYNC(self):
+        return {
+            "host": self.REDIS_HOST,
+            "port": self.REDIS_PORT,
+            "password": self.REDIS_PASSWORD,
+            "decode_responses": True,
+        }
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -73,6 +87,7 @@ class Settings(BaseSettings):
     urls: UrlsConfig = UrlsConfig()
     pg_database: PostgresConfig = PostgresConfig()
     rabbitmq: RabbitConfig = RabbitConfig()
+    redis: RedisConfig = RedisConfig()
 
 
 settings = Settings()

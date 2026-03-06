@@ -5,7 +5,7 @@ from uuid import UUID
 import httpx
 from fastapi import status, HTTPException
 
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -19,12 +19,37 @@ logger = logging.getLogger(__name__)
 
 
 class OrderService:
+    @staticmethod
+    def _build_orders_payload(order_rows, item_rows) -> list[dict]:
+        items_by_order_id: dict[UUID, list[dict]] = defaultdict(list)
+        for item in item_rows:
+            items_by_order_id[item.order_id].append(
+                {
+                    "product_id": item.product_id,
+                    "quantity": item.quantity,
+                    "price": item.price,
+                    "seller_id": item.seller_id,
+                }
+            )
+
+        return [
+            {
+                "id": order.id,
+                "user_id": order.user_id,
+                "status": order.status.value,
+                "total_amount": order.total_amount,
+                "created_at": order.created_at,
+                "order_items": items_by_order_id.get(order.id, []),
+            }
+            for order in order_rows
+        ]
+
     @classmethod
     async def create_order(cls, session: AsyncSession, order_data: OrderCreateSchema):
         logger.info("create_order")
 
         stock_response = await cls.check_products_stock(order_data)
-        logger.info(f"products in stock")
+        logger.info("products in stock")
 
         order = OrderModel(
             user_id=order_data.user_id,
@@ -37,6 +62,8 @@ class OrderService:
         await cls.reserve_products(order.id, order_data.order_items)
 
         for order_item in stock_response.get("products"):
+            if order_item.get("seller_id"):
+                order_item["seller_id"] = UUID(order_item["seller_id"])
             order_item_model = OrderItemModel(**order_item, order_id=order.id)
             session.add(order_item_model)
 
@@ -65,7 +92,7 @@ class OrderService:
                 if not result.get("ok"):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Products not in stock",
+                        detail="Products not in stock",
                     )
 
                 return result
@@ -115,7 +142,7 @@ class OrderService:
             if order_status != OrderStatus.PENDING or not order_status:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Order is not pending"
+                    detail="Order is not pending"
                 )
 
             stmt = (
@@ -137,13 +164,13 @@ class OrderService:
         if order_status == OrderStatus.PAID:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order already paid"
+                detail="Order already paid"
             )
 
         if order_status != OrderStatus.RESERVED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order is not reserver"
+                detail="Order is not reserver"
             )
 
         stmt = (
@@ -171,13 +198,13 @@ class OrderService:
         if order_status == OrderStatus.PREPARING:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order already prepared"
+                detail="Order already prepared"
             )
 
         if order_status != OrderStatus.PAID:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order not paid"
+                detail="Order not paid"
             )
 
         stmt = (
@@ -203,8 +230,15 @@ class OrderService:
         user_id: UUID,
     ) -> list[dict]:
         orders_stmt = (
-            select(OrderModel.id, OrderModel.status)
+            select(
+                OrderModel.id,
+                OrderModel.user_id,
+                OrderModel.status,
+                OrderModel.total_amount,
+                OrderModel.created_at,
+            )
             .where(OrderModel.user_id == user_id)
+            .order_by(OrderModel.created_at.desc())
         )
         order_rows = (await session.execute(orders_stmt)).all()
 
@@ -218,29 +252,73 @@ class OrderService:
                 OrderItemModel.product_id,
                 OrderItemModel.quantity,
                 OrderItemModel.price,
+                OrderItemModel.seller_id,
             )
             .where(OrderItemModel.order_id.in_(order_ids))
         )
         item_rows = (await session.execute(items_stmt)).all()
 
-        items_by_order_id: dict[UUID, list[dict]] = defaultdict(list)
-        for item in item_rows:
-            items_by_order_id[item.order_id].append(
-                {
-                    "product_id": item.product_id,
-                    "quantity": item.quantity,
-                    "price": item.price,
-                }
-            )
+        return cls._build_orders_payload(order_rows, item_rows)
 
-        return [
-            {
-                "id": order.id,
-                "status": order.status.value,
-                "order_items": items_by_order_id.get(order.id, []),
-            }
-            for order in order_rows
-        ]
+    @classmethod
+    async def get_orders_by_seller_id(
+        cls,
+        session: AsyncSession,
+        seller_id: UUID,
+    ) -> list[dict]:
+        order_ids_stmt = (
+            select(OrderItemModel.order_id)
+            .where(OrderItemModel.seller_id == seller_id)
+            .distinct()
+        )
+        order_ids = list((await session.scalars(order_ids_stmt)).all())
+        if not order_ids:
+            return []
+
+        orders_stmt = (
+            select(
+                OrderModel.id,
+                OrderModel.user_id,
+                OrderModel.status,
+                OrderModel.total_amount,
+                OrderModel.created_at,
+            )
+            .where(OrderModel.id.in_(order_ids))
+            .order_by(OrderModel.created_at.desc())
+        )
+        order_rows = (await session.execute(orders_stmt)).all()
+
+        items_stmt = (
+            select(
+                OrderItemModel.order_id,
+                OrderItemModel.product_id,
+                OrderItemModel.quantity,
+                OrderItemModel.price,
+                OrderItemModel.seller_id,
+            )
+            .where(
+                and_(
+                    OrderItemModel.order_id.in_(order_ids),
+                    OrderItemModel.seller_id == seller_id,
+                )
+            )
+        )
+        item_rows = (await session.execute(items_stmt)).all()
+
+        return cls._build_orders_payload(order_rows, item_rows)
+
+    @classmethod
+    async def get_orders_count_by_seller_id(
+        cls,
+        session: AsyncSession,
+        seller_id: UUID,
+    ) -> int:
+        stmt = (
+            select(func.count(func.distinct(OrderItemModel.order_id)))
+            .where(OrderItemModel.seller_id == seller_id)
+        )
+        orders_count = await session.scalar(stmt)
+        return int(orders_count or 0)
 
     # TODO: оптимизировать
     @classmethod

@@ -2,6 +2,7 @@ from enum import Enum
 from uuid import uuid4, UUID
 
 from sqlalchemy import Integer, Float
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -41,3 +42,4 @@ class OrderItemModel(Base, TimestampMixin):
     product_id: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     price: Mapped[float] = mapped_column(Float, nullable=True)
+    seller_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)

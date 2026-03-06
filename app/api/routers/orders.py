@@ -21,6 +21,19 @@ async def get_orders_by_user_id(session: SessionDep, user_id: UUID):
     return await OrderService.get_orders_by_user_id(session, user_id)
 
 
+@orders_router.get("/sellers/{seller_id}")
+async def get_orders_by_seller_id(session: SessionDep, seller_id: UUID):
+    orders = await OrderService.get_orders_by_seller_id(session, seller_id)
+    orders_count = await OrderService.get_orders_count_by_seller_id(session, seller_id)
+    return {"orders_count": orders_count, "orders": orders}
+
+
+@orders_router.get("/sellers/{seller_id}/count")
+async def get_orders_count_by_seller_id(session: SessionDep, seller_id: UUID):
+    orders_count = await OrderService.get_orders_count_by_seller_id(session, seller_id)
+    return {"orders_count": orders_count}
+
+
 @orders_router.get("/{order_id}")
 async def get_order_by_id(session: SessionDep, order_id: UUID):
     product = await OrderService.get_order_by_id(session, order_id)

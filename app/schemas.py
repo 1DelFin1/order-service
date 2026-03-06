@@ -12,3 +12,8 @@ class OrderBaseSchema(BaseModel):
 class OrderCreateSchema(BaseModel):
     user_id: UUID
     order_items: List[OrderBaseSchema]
+
+
+
+class CartSchema(OrderBaseSchema):
+    pass
