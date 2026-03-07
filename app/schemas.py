@@ -17,3 +17,6 @@ class OrderCreateSchema(BaseModel):
 
 class CartSchema(OrderBaseSchema):
     pass
+
+class FavoriteSchema(OrderBaseSchema):
+    pass
