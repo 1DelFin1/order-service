@@ -49,7 +49,6 @@ class OrderService:
         logger.info("create_order")
 
         stock_response = await cls.check_products_stock(order_data)
-        logger.info("products in stock")
 
         order = OrderModel(
             user_id=order_data.user_id,
@@ -338,6 +337,6 @@ class OrderService:
             select(OrderItemModel.product_id)
             .where(OrderItemModel.order_id.in_(order_ids))
         )
-        product_ids = list((await session.scalars(stmt)).all())
+        product_ids = list(set((await session.scalars(stmt)).all()))
 
         return product_id in product_ids

@@ -14,7 +14,6 @@ class OrderCreateSchema(BaseModel):
     order_items: List[OrderBaseSchema]
 
 
-
 class CartSchema(OrderBaseSchema):
     pass
 
