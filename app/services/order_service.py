@@ -319,7 +319,6 @@ class OrderService:
         orders_count = await session.scalar(stmt)
         return int(orders_count or 0)
 
-    # TODO: оптимизировать
     @classmethod
     async def has_user_purchased_product(
         cls,
@@ -327,16 +326,24 @@ class OrderService:
         user_id: UUID,
         product_id: int,
     ) -> bool:
-        stmt = (
-            select(OrderModel.id)
-            .where(OrderModel.user_id == user_id)
+        review_allowed_statuses = (
+            OrderStatus.PAID,
+            OrderStatus.PREPARING,
+            OrderStatus.SHIPPING,
+            OrderStatus.DELIVERED,
+            OrderStatus.COMPLETED,
+            OrderStatus.REFUNDED,
         )
-        order_ids = list((await session.scalars(stmt)).all())
 
         stmt = (
-            select(OrderItemModel.product_id)
-            .where(OrderItemModel.order_id.in_(order_ids))
+            select(OrderItemModel.id)
+            .join(OrderModel, OrderModel.id == OrderItemModel.order_id)
+            .where(
+                OrderModel.user_id == user_id,
+                OrderItemModel.product_id == product_id,
+                OrderModel.status.in_(review_allowed_statuses),
+            )
+            .limit(1)
         )
-        product_ids = list(set((await session.scalars(stmt)).all()))
-
-        return product_id in product_ids
+        purchased_item_id = await session.scalar(stmt)
+        return purchased_item_id is not None
